@@ -97,7 +97,7 @@ with col_left:
                     lang_map = {"日本語": "ja", "英語": "en", "中国語": "zh-CN", "スペイン語": "es", "韓国語": "ko"}
                     VOICE_MODELS = {
                         "男性": "b8580c330cd74c2bbb7785815f1756d3",
-                        "女性": "735434a118054f65897638d4b7380dfc"
+                        "女性": "8c674440f29d49189c4d526a95c8bec3"
                     }
                     
                     translated = GoogleTranslator(source='ja', target=lang_map[lang_option]).translate(text_input)
