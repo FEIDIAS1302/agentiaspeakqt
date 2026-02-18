@@ -4,39 +4,62 @@ from deep_translator import GoogleTranslator
 import whisper
 import os
 import difflib
-import io
 
 # --- ページ設定 & デザイン ---
-st.set_page_config(page_title="AGENTIA for QTnet β", layout="wide") # 横並びのためにwideに設定
+st.set_page_config(page_title="AGENTIA for QTnetβ", layout="wide")
 
 st.markdown("""
     <style>
+    /* 全体背景とフォント */
+    .stApp { background-color: #ffffff; }
     header {visibility: hidden;}
-    .main .block-container { max-width: 1000px; padding-top: 2rem; }
-    .quality-badge { padding: 4px 12px; border-radius: 4px; font-weight: bold; }
-    .pass { background-color: #d4edda; color: #155724; }
-    .fail { background-color: #f8d7da; color: #721c24; }
-    .stButton>button { 
-        background-color: #004e92; 
-        color: white; 
-        border-radius: 6px;
+    
+    /* コンテナ調整 */
+    .main .block-container { max-width: 1100px; padding-top: 1rem; }
+    
+    /* センターロゴ用 */
+    .logo-container { display: flex; justify-content: center; margin-bottom: 2rem; }
+    
+    /* セクションの枠組み */
+    .section-title {
+        font-size: 0.9rem;
+        font-weight: bold;
+        color: #666;
+        margin-bottom: 1rem;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
     }
-    /* ストックカードのスタイル */
+    
+    /* ストックカード：さらにミニマルに */
     .stock-card {
-        border: 1px solid #ddd;
-        padding: 10px;
-        border-radius: 8px;
-        margin-bottom: 10px;
-        background-color: #f9f9f9;
+        padding: 12px;
+        border: 1px solid #f0f0f0;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        background-color: #fafafa;
     }
+    
+    /* バッジ */
+    .quality-badge { font-size: 0.8rem; padding: 2px 8px; border-radius: 12px; }
+    .pass { background-color: #e6fffa; color: #234e52; border: 1px solid #b2f5ea; }
+    .fail { background-color: #fff5f5; color: #822727; border: 1px solid #feb2b2; }
+    
+    /* ボタン */
+    .stButton>button { 
+        width: 100%;
+        background-color: #1a202c;
+        color: white;
+        border: none;
+        transition: 0.2s;
+    }
+    .stButton>button:hover { background-color: #2d3748; color: white; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- セッション状態の初期化 (音声ストック用) ---
+# --- セッション状態の初期化 ---
 if "audio_stock" not in st.session_state:
     st.session_state.audio_stock = []
 
-# --- 内部解析関数 ---
 @st.cache_resource
 def load_whisper():
     return whisper.load_model("base")
@@ -55,91 +78,36 @@ def analyze_audio(audio_bytes, target_text):
         if os.path.exists(temp_file):
             os.remove(temp_file)
 
-# --- メインレイアウト ---
-col_main, col_stock = st.columns([1.2, 1]) # 左に操作系、右にストック
+# --- レイアウト ---
 
-with col_main:
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=300)
-    else:
-        st.title("音声生成システム")
+# 1. ロゴ（センター配置）
+if os.path.exists("logo.png"):
+    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+    st.image("logo.png", width=280)
+    st.markdown('</div>', unsafe_allow_html=True)
+else:
+    st.markdown("<h1 style='text-align: center;'>AGENTIA</h1>", unsafe_allow_html=True)
 
-    text_input = st.text_area("テキスト入力 (日本語)", placeholder="音声化したい内容を入力してください...", height=150)
+# 2. 2カラム構成
+col_left, col_right = st.columns([1, 1], gap="large")
+
+with col_left:
+    st.markdown('<div class="section-title">AUDIO GENERATION</div>', unsafe_allow_html=True)
+    text_input = st.text_area("本文", placeholder="テキストを入力...", height=180, label_visibility="collapsed")
     
     c1, c2 = st.columns(2)
     with c1:
-        lang_option = st.selectbox("出力言語", ["日本語", "英語", "中国語", "スペイン語", "韓国語"])
+        lang_option = st.selectbox("言語", ["日本語", "英語", "中国語", "スペイン語", "韓国語"])
     with c2:
-        # ボイス選択を2つに限定
-        voice_style = st.selectbox("音声モデル", ["男性", "女性"])
+        voice_style = st.selectbox("モデル", ["男性", "女性"])
 
-    VOICE_MODELS = {
-        "男性": "b8580c330cd74c2bbb7785815f1756d3",
-        "女性": "735434a118054f65897638d4b7380dfc"
-    }
-
-    if st.button("音声を生成・検品"):
+    if st.button("生成を実行"):
         api_key = st.secrets.get("FISH_AUDIO_API_KEY")
         if not api_key:
-            st.error("Secretsに 'FISH_AUDIO_API_KEY' を設定してください。")
+            st.error("APIキーが設定されていません。")
         elif text_input:
-            with st.spinner('AI生成中...'):
+            with st.spinner('Processing...'):
                 try:
                     lang_map = {"日本語": "ja", "英語": "en", "中国語": "zh-CN", "スペイン語": "es", "韓国語": "ko"}
-                    translated = GoogleTranslator(source='ja', target=lang_map[lang_option]).translate(text_input)
-                    
-                    # APIリクエスト (Fish Audio)
-                    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-                    payload = {"text": translated, "format": "wav", "reference_id": VOICE_MODELS[voice_style]}
-                    res = requests.post("https://api.fish.audio/v1/tts", headers=headers, json=payload)
-                    
-                    if res.status_code == 200:
-                        audio_data = res.content
-                        analysis = analyze_audio(audio_data, translated)
-                        
-                        # ストックに追加 (最大5つ、新しいものを上に)
-                        new_item = {
-                            "audio": audio_data,
-                            "text": text_input[:20] + "...",
-                            "lang": lang_option,
-                            "acc": analysis['accuracy'],
-                            "trans": analysis['transcribed']
-                        }
-                        st.session_state.audio_stock.insert(0, new_item)
-                        if len(st.session_state.audio_stock) > 5:
-                            st.session_state.audio_stock.pop()
-                            
-                        st.success("生成完了！右側のストックに追加されました。")
-                    else:
-                        st.error(f"APIエラー: {res.status_code}")
-                except Exception as e:
-                    st.error(f"エラー: {e}")
-
-# --- 右側：音声ストックエリア ---
-with col_stock:
-    st.subheader("生成済みストック (最新5件)")
-    if not st.session_state.audio_stock:
-        st.info("生成された音声がここに表示されます")
-    
-    for i, item in enumerate(st.session_state.audio_stock):
-        with st.container():
-            st.markdown(f"""
-            <div class="stock-card">
-                <small>{item['lang']} | 精度: {item['acc']:.1f}%</small><br>
-                <strong>{item['text']}</strong>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.audio(item['audio'])
-            
-            # ダウンロードボタン (キーをユニークにするために i を使用)
-            st.download_button(
-                label=f"Download WAV #{i+1}",
-                data=item['audio'],
-                file_name=f"voice_{item['lang']}_{i}.wav",
-                mime="audio/wav",
-                key=f"dl_{i}"
-            )
-            st.markdown("---")
-
-st.caption("© 2026 Powered by FEIDIAS Inc.")
+                    VOICE_MODELS = {
+                        "男性": "b8580c330cd74c2bbb7785815f175
