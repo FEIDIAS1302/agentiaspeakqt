@@ -1,0 +1,6 @@
+streamlit
+requests
+deep-translator
+openai-whisper
+numpy
+librosa
