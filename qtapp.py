@@ -6,23 +6,22 @@ import os
 import difflib
 
 # --- ページ設定 & デザイン ---
-st.set_page_config(page_title="AGENTIA for QTnet β版", layout="wide")
+st.set_page_config(page_title="AGENTIA for QTnet", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
     header {visibility: hidden;}
     
-    /* ページ全体のセンターロゴ設定 */
-    .global-logo-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding: 2rem 0;
-        width: 100%;
+    /* ページ全体のロゴを強制的に中央へ */
+    .stImage {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
     }
     
-    .main .block-container { max-width: 1100px; padding-top: 0rem; }
+    /* コンテナの幅調整 */
+    .main .block-container { max-width: 1100px; padding-top: 2rem; }
     
     .section-title {
         font-size: 0.9rem;
@@ -33,7 +32,7 @@ st.markdown("""
         padding-bottom: 5px;
     }
     
-    /* ストックカード：スクロール可能なテキストエリア */
+    /* ストックカード内のスクロール設定 */
     .stock-card {
         padding: 12px;
         border: 1px solid #f0f0f0;
@@ -46,14 +45,13 @@ st.markdown("""
         font-size: 0.85rem;
         color: #444;
         line-height: 1.5;
-        max-height: 150px; /* ボックスの最大高さ */
-        overflow-y: auto;  /* 溢れた場合にスクロールバーを表示 */
+        max-height: 150px; 
+        overflow-y: auto;
         padding-right: 5px;
         margin-bottom: 10px;
-        white-space: pre-wrap; /* 改行を維持 */
+        white-space: pre-wrap;
     }
     
-    /* スクロールバーの見た目（ミニマル） */
     .scrollable-text::-webkit-scrollbar { width: 4px; }
     .scrollable-text::-webkit-scrollbar-thumb { background: #ddd; border-radius: 10px; }
     
@@ -94,23 +92,27 @@ def analyze_audio(audio_bytes, target_text):
         if os.path.exists(temp_file):
             os.remove(temp_file)
 
-# --- レイアウト ---
+# --- レイアウト開始 ---
 
-# 1. ロゴ（カラムの外側でページ全体の中央に配置）
-st.markdown('<div class="global-logo-container">', unsafe_allow_html=True)
+# 1. ロゴ配置 (カラム作成前に行うことで全体の中央を確保)
 if os.path.exists("logo.png"):
-    st.image("logo.png", width=450)
+    # st.columnsでダミーの余白を作って中央に寄せる確実な方法
+    _, center_col, _ = st.columns([1, 1, 1])
+    with center_col:
+        st.image("logo.png", use_container_width=True)
 else:
-    st.markdown("<h2 style='color: #333; margin: 0;'>AGENTIA</h2>", unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #333;'>AGENTIA</h2>", unsafe_allow_html=True)
 
-# 2. 2カラム構成
+# 縦の余白
+st.write("##")
+
+# 2. 2カラム構成 (ここから生成とストック)
 col_left, col_right = st.columns([1, 1], gap="large")
 
 with col_left:
     st.markdown('<div class="section-title">AUDIO GENERATION</div>', unsafe_allow_html=True)
-    # 高さを300に設定して倍くらいのサイズに
-    text_input = st.text_area("本文", placeholder="音声化したい内容を入力してください...", height=300, label_visibility="collapsed")
+    # 高さを300に設定
+    text_input = st.text_area("本文", placeholder="音声化したい内容を入力...", height=300, label_visibility="collapsed")
     
     c1, c2 = st.columns(2)
     with c1:
@@ -121,7 +123,7 @@ with col_left:
     if st.button("音声を生成・検品"):
         api_key = st.secrets.get("FISH_AUDIO_API_KEY")
         if not api_key:
-            st.error("Secretsに 'FISH_AUDIO_API_KEY' を設定してください。")
+            st.error("APIキーが必要です。")
         elif text_input:
             with st.spinner('Generating...'):
                 try:
@@ -130,7 +132,6 @@ with col_left:
                         "男性": "b8580c330cd74c2bbb7785815f1756d3",
                         "女性": "8c674440f29d49189c4d526a95c8bec3"
                     }
-                    
                     translated = GoogleTranslator(source='ja', target=lang_map[lang_option]).translate(text_input)
                     
                     res = requests.post(
@@ -143,7 +144,6 @@ with col_left:
                         audio_data = res.content
                         analysis = analyze_audio(audio_data, translated)
                         
-                        # ストックに追加 (テキスト全文を保持)
                         new_item = {
                             "audio": audio_data,
                             "full_text": text_input, 
@@ -153,10 +153,7 @@ with col_left:
                         st.session_state.audio_stock.insert(0, new_item)
                         if len(st.session_state.audio_stock) > 5:
                             st.session_state.audio_stock.pop()
-                        
                         st.rerun()
-                    else:
-                        st.error(f"API Error: {res.status_code}")
                 except Exception as e:
                     st.error(f"Error: {e}")
 
@@ -169,7 +166,6 @@ with col_right:
     for i, item in enumerate(st.session_state.audio_stock):
         with st.container():
             acc_class = "pass" if item['acc'] > 80 else "fail"
-            # スクロール可能なテキストボックス
             st.markdown(f"""
             <div class="stock-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
