@@ -69,7 +69,7 @@ def analyze_audio(audio_bytes, target_text):
 # 1. ロゴ（センター）
 if os.path.exists("logo.png"):
     st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-    st.image("logo.png", width=600)
+    st.image("logo.png", width=400)
     st.markdown('</div>', unsafe_allow_html=True)
 else:
     st.markdown("<h2 style='text-align: center; color: #333;'>AGENTIA</h2>", unsafe_allow_html=True)
