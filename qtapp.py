@@ -6,21 +6,14 @@ import os
 import difflib
 
 # --- ページ設定 & デザイン ---
-st.set_page_config(page_title="AGENTIA for QTnetβ", layout="wide")
+st.set_page_config(page_title="AGENTIA for QTnet β版", layout="wide")
 
 st.markdown("""
     <style>
-    /* 全体背景とフォント */
     .stApp { background-color: #ffffff; }
     header {visibility: hidden;}
-    
-    /* コンテナ調整 */
     .main .block-container { max-width: 1100px; padding-top: 1rem; }
-    
-    /* センターロゴ用 */
     .logo-container { display: flex; justify-content: center; margin-bottom: 2rem; }
-    
-    /* セクションの枠組み */
     .section-title {
         font-size: 0.9rem;
         font-weight: bold;
@@ -29,8 +22,6 @@ st.markdown("""
         border-bottom: 1px solid #eee;
         padding-bottom: 5px;
     }
-    
-    /* ストックカード：さらにミニマルに */
     .stock-card {
         padding: 12px;
         border: 1px solid #f0f0f0;
@@ -38,21 +29,16 @@ st.markdown("""
         margin-bottom: 8px;
         background-color: #fafafa;
     }
-    
-    /* バッジ */
-    .quality-badge { font-size: 0.8rem; padding: 2px 8px; border-radius: 12px; }
+    .quality-badge { font-size: 0.8rem; padding: 2px 8px; border-radius: 12px; font-weight: bold; }
     .pass { background-color: #e6fffa; color: #234e52; border: 1px solid #b2f5ea; }
     .fail { background-color: #fff5f5; color: #822727; border: 1px solid #feb2b2; }
-    
-    /* ボタン */
     .stButton>button { 
         width: 100%;
         background-color: #1a202c;
         color: white;
         border: none;
-        transition: 0.2s;
     }
-    .stButton>button:hover { background-color: #2d3748; color: white; }
+    .stButton>button:hover { background-color: #2d3748; color: white; border: none; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -80,34 +66,94 @@ def analyze_audio(audio_bytes, target_text):
 
 # --- レイアウト ---
 
-# 1. ロゴ（センター配置）
+# 1. ロゴ（センター）
 if os.path.exists("logo.png"):
     st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-    st.image("logo.png", width=280)
+    st.image("logo.png", width=250)
     st.markdown('</div>', unsafe_allow_html=True)
 else:
-    st.markdown("<h1 style='text-align: center;'>AGENTIA</h1>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #333;'>AGENTIA</h2>", unsafe_allow_html=True)
 
 # 2. 2カラム構成
 col_left, col_right = st.columns([1, 1], gap="large")
 
 with col_left:
     st.markdown('<div class="section-title">AUDIO GENERATION</div>', unsafe_allow_html=True)
-    text_input = st.text_area("本文", placeholder="テキストを入力...", height=180, label_visibility="collapsed")
+    text_input = st.text_area("本文", placeholder="テキストを入力してください...", height=150, label_visibility="collapsed")
     
     c1, c2 = st.columns(2)
     with c1:
-        lang_option = st.selectbox("言語", ["日本語", "英語", "中国語", "スペイン語", "韓国語"])
+        lang_option = st.selectbox("出力言語", ["日本語", "英語", "中国語", "スペイン語", "韓国語"])
     with c2:
-        voice_style = st.selectbox("モデル", ["男性", "女性"])
+        voice_style = st.selectbox("音声モデル", ["男性", "女性"])
 
-    if st.button("生成を実行"):
+    if st.button("生成・検品を実行"):
         api_key = st.secrets.get("FISH_AUDIO_API_KEY")
         if not api_key:
-            st.error("APIキーが設定されていません。")
+            st.error("Secretsに 'FISH_AUDIO_API_KEY' を設定してください。")
         elif text_input:
-            with st.spinner('Processing...'):
+            with st.spinner('Generating...'):
                 try:
                     lang_map = {"日本語": "ja", "英語": "en", "中国語": "zh-CN", "スペイン語": "es", "韓国語": "ko"}
                     VOICE_MODELS = {
-                        "男性": "b8580c330cd74c2bbb7785815f175
+                        "男性": "b8580c330cd74c2bbb7785815f1756d3",
+                        "女性": "735434a118054f65897638d4b7380dfc"
+                    }
+                    
+                    translated = GoogleTranslator(source='ja', target=lang_map[lang_option]).translate(text_input)
+                    
+                    res = requests.post(
+                        "https://api.fish.audio/v1/tts",
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        json={"text": translated, "format": "wav", "reference_id": VOICE_MODELS[voice_style]}
+                    )
+                    
+                    if res.status_code == 200:
+                        audio_data = res.content
+                        analysis = analyze_audio(audio_data, translated)
+                        
+                        # ストックに追加 (最大5件)
+                        new_item = {
+                            "audio": audio_data,
+                            "text": text_input[:40] + ("..." if len(text_input) > 40 else ""),
+                            "lang": lang_option,
+                            "acc": analysis['accuracy']
+                        }
+                        st.session_state.audio_stock.insert(0, new_item)
+                        if len(st.session_state.audio_stock) > 5:
+                            st.session_state.audio_stock.pop()
+                        
+                        st.rerun()
+                    else:
+                        st.error(f"API Error: {res.status_code}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+with col_right:
+    st.markdown('<div class="section-title">RECENT STOCK</div>', unsafe_allow_html=True)
+    
+    if not st.session_state.audio_stock:
+        st.caption("履歴はありません")
+    
+    for i, item in enumerate(st.session_state.audio_stock):
+        with st.container():
+            acc_class = "pass" if item['acc'] > 80 else "fail"
+            st.markdown(f"""
+            <div class="stock-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.75rem; color: #999;">{item['lang']}</span>
+                    <span class="quality-badge {acc_class}">{item['acc']:.1f}%</span>
+                </div>
+                <div style="font-size: 0.85rem; color: #444; line-height: 1.4;">{item['text']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            aud_col, dl_col = st.columns([4, 1])
+            with aud_col:
+                st.audio(item['audio'])
+            with dl_col:
+                st.download_button("DL", item['audio'], f"voice_{i}.wav", "audio/wav", key=f"dl_{i}")
+            st.write("") 
+
+st.markdown("<div style='margin-top: 50px;'></div>", unsafe_allow_html=True)
+st.caption("© 2026 Powered by FEIDIAS Inc.")
